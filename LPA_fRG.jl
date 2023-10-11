@@ -1,5 +1,6 @@
 using Plots
 using BenchmarkTools
+using DifferentialEquations
 
 struct ModelParameters{T, I}
     Λ::T
@@ -35,6 +36,7 @@ end
 
 function flow_kernel(u, t, params::ModelParameters)
     # Only works for d = 3
+
     curvature_mass = similar(u)
     flux = similar(u)
     du = similar(u)
@@ -63,7 +65,7 @@ function flow_kernel(u, t, params::ModelParameters)
         end
     end
 
-    flux
+    return du
 end
 
 function generate_grid(params::NumericParameters)
@@ -74,9 +76,24 @@ function initial_values(params::ModelParameters)
     params.msqUV .+ params.λUV .* params.grid
 end
 
-num_params = NumericParameters(5., 7.5, 20)
-model_params = ModelParameters(7.5, 3, 2.5, 1., generate_grid(num_params))
+function get_RG_time_span(params::NumericParameters)
+    (zero(params.tmax), params.tmax)
+end
+
+function kernel_DiffEQ(u, p, t)
+    flow_kernel(u, t, p)
+end
+
+num_params = NumericParameters(5., 7.5, 256)
+model_params = ModelParameters(7.5, 3, -2.0, 1., generate_grid(num_params))
 
 uinit = initial_values(model_params)
+tspan = get_RG_time_span(num_params)
 
-flow_kernel(uinit, 0., model_params)
+prob = ODEProblem(kernel_DiffEQ, uinit, tspan, model_params)
+sol = solve(prob, QNDF(), reltol = 1e-8, abstol = 1e-8)
+
+plot(model_params.grid[1:150], [sol(t)[1:150] for t in 0:0.1:5], lw=3, legend=false)
+
+plot(t->sol(t)[256], tspan[1], tspan[2])
+
